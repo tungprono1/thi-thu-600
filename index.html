@@ -35,6 +35,7 @@
   .rule b{display:block;font-size:15px}
   .rule span{font-size:13px;color:var(--muted)}
   .passnote{background:var(--brand-soft);color:var(--brand-d);border-radius:12px;padding:12px;font-size:14px;font-weight:600;margin-bottom:22px}
+  .start-actions{display:grid;gap:10px}
 
   /* ---------- HEADER BAR ---------- */
   .topbar{position:sticky;top:0;z-index:20;background:rgba(238,242,247,.9);backdrop-filter:blur(8px);
@@ -167,9 +168,11 @@ window.QUESTIONS=[{"id":1,"ch":1,"ct":"Quy định chung và quy tắc giao thô
 const TOTAL_Q = 30;       // số câu mỗi lần thi
 const TIME_MIN = 20;      // phút
 const PASS = 27;          // số câu đúng tối thiểu để đỗ
+const ROAD_SIGN_CHAPTER = 5; // Báo hiệu đường bộ
 const app = document.getElementById('app');
 
-let pool = window.QUESTIONS || [];
+const pool = window.QUESTIONS || [];
+const roadSignPool = pool.filter(q => q.ch === ROAD_SIGN_CHAPTER);
 let quiz = [];            // 30 câu đang thi
 let answers = [];         // chỉ số phương án chọn (1-based) hoặc null
 let flags = [];           // true/false
@@ -177,7 +180,8 @@ let cur = 0;
 let timeLeft = TIME_MIN*60;
 let timer = null;
 let finished = false;
-let currentSeed = 0;      // seed = thời điểm bấm Bắt đầu thi
+let roadSignsOnly = false;
+let currentSeed = 0;      // seed = thời điểm bấm nút bắt đầu lượt thi
 
 /* -------- utils -------- */
 // PRNG có seed (mulberry32) -> cùng seed sẽ cho cùng bộ câu hỏi
@@ -197,23 +201,29 @@ function renderStart(){
     <div class="sub">Bộ 600 câu hỏi · Giải thích chi tiết sau khi nộp bài</div>
     <div class="passnote">✅ Đúng từ <b>${PASS}/${TOTAL_Q}</b> câu trở lên là ĐỖ</div>
     <div class="rules">
-      <div class="rule"><div class="ic">📝</div><div><b>${TOTAL_Q} câu hỏi</b><span>Chọn ngẫu nhiên từ 600 câu</span></div></div>
+      <div class="rule"><div class="ic">📝</div><div><b>${TOTAL_Q} câu hỏi</b><span>Chọn ngẫu nhiên theo chế độ thi</span></div></div>
       <div class="rule"><div class="ic">⏱️</div><div><b>${TIME_MIN} phút</b><span>Hết giờ tự động nộp bài</span></div></div>
       <div class="rule"><div class="ic">⚑</div><div><b>Cắm cờ</b><span>Câu cắm cờ được tính là chưa làm</span></div></div>
       <div class="rule"><div class="ic">📊</div><div><b>Xem lại</b><span>Hiện đáp án & giải thích khi thi xong</span></div></div>
     </div>
-    <button class="btn-primary" style="width:100%" onclick="startExam()">Bắt đầu thi →</button>
+    <div class="start-actions">
+      <button class="btn-primary" onclick="startExam()">Bắt đầu thi →</button>
+      <button class="btn-ghost" onclick="startExam(true)">Thi riêng biển báo</button>
+    </div>
   </div>
   <footer>Nguồn: ${esc((window.EXAM_META&&window.EXAM_META.source)||'600 câu sát hạch')}</footer>`;
 }
 
 /* ================= EXAM ================= */
-function startExam(){
+function startExam(onlyRoadSigns = false){
   currentSeed = Date.now();                       // seed theo thời điểm bấm bắt đầu
+  roadSignsOnly = onlyRoadSigns;
+  const questionPool = roadSignsOnly ? roadSignPool : pool;
   const rng = mulberry32(currentSeed);
-  quiz = shuffle(pool, rng).slice(0, Math.min(TOTAL_Q, pool.length));
+  quiz = shuffle(questionPool, rng).slice(0, TOTAL_Q);
   answers = new Array(quiz.length).fill(null);
   flags = new Array(quiz.length).fill(false);
+  reviewFilter = 'all';
   cur = 0; timeLeft = TIME_MIN*60; finished=false;
   clearInterval(timer);
   timer = setInterval(()=>{
@@ -243,7 +253,7 @@ function renderExam(){
   </div></div>
 
   <div class="palette">
-    <h3>Danh sách câu hỏi</h3>
+    <h3>${roadSignsOnly ? 'Thi riêng biển báo' : 'Danh sách câu hỏi'}</h3>
     <div class="grid" id="grid"></div>
     <div class="legend">
       <span><i class="lg-ans"></i>Đã chọn</span>
@@ -393,7 +403,7 @@ function showEnding(tier){
     <img class="egif" src="${it.gif}" alt="">
     <div class="etext">${esc(it.text)}</div>
     <div class="ebtns">
-      <button class="btn-primary" onclick="closeEnding();startExam();">🔁 Thi lại (30 câu mới)</button>
+      <button class="btn-primary" onclick="closeEnding();startExam(roadSignsOnly);">🔁 Thi lại (30 câu mới)</button>
       <button class="btn-ghost" onclick="closeEnding()">Xem lại bài làm</button>
     </div>
   </div>`;
@@ -416,7 +426,7 @@ function renderResult(){
     <span class="verdict ${pass?'pass':'fail'}">${pass?'✓ Đỗ':'✗ Trượt'}</span>
     <div class="score">${correct}<small>/${quiz.length}</small></div>
     <div style="color:var(--muted);font-size:14px">Cần đúng ≥ ${PASS} câu để đỗ · Thời gian làm: ${fmt(used)}</div>
-    <div style="color:var(--muted);font-size:12.5px;margin-top:4px">Mã đề: <b>${currentSeed}</b> · bắt đầu lúc ${seedLabel(currentSeed)}</div>
+    <div style="color:var(--muted);font-size:12.5px;margin-top:4px">${roadSignsOnly ? 'Thi riêng biển báo · ' : ''}Mã đề: <b>${currentSeed}</b> · bắt đầu lúc ${seedLabel(currentSeed)}</div>
     <div class="statgrid">
       <div class="stat g"><b>${correct}</b><span>Đúng</span></div>
       <div class="stat r"><b>${wrong}</b><span>Sai</span></div>
@@ -425,7 +435,7 @@ function renderResult(){
     </div>
     <div class="navrow">
       <button class="btn-ghost" onclick="renderStart()">← Về trang chủ</button>
-      <button class="btn-primary" onclick="startExam()">Thi lại (30 câu mới)</button>
+      <button class="btn-primary" onclick="startExam(roadSignsOnly)">Thi lại (30 câu mới)</button>
     </div>
   </div>
 
